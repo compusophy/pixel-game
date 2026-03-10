@@ -1,0 +1,21 @@
+# rust
+/target/
+Cargo.lock
+
+# wasm build output
+/static/pkg/
+
+# node (legacy)
+/node_modules/
+/dist/
+/pkg/
+
+# ide
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# os
+.DS_Store
+Thumbs.db

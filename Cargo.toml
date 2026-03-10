@@ -1,0 +1,3 @@
+[workspace]
+members = ["game-core", "game-server", "game-wasm"]
+resolver = "2"

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="server-rendered pixel game streamed via websocket">
+    <title>pixel buffer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            text-transform: lowercase;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0a0f;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .fps {
+            position: fixed;
+            bottom: 6px;
+            left: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 300;
+            letter-spacing: 0.1em;
+            color: rgba(64, 64, 88, 0.7);
+            font-variant-numeric: tabular-nums;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <p class="fps" id="fps">connecting…</p>
+    <script>
+        (function () {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const fpsEl = document.getElementById('fps');
+
+            // use actual viewport dimensions (capped for server perf)
+            function getSize() {
+                const maxDim = 960;
+                const ratio = Math.min(maxDim / window.innerWidth, maxDim / window.innerHeight, 1);
+                return {
+                    w: Math.floor(window.innerWidth * ratio),
+                    h: Math.floor(window.innerHeight * ratio),
+                };
+            }
+
+            let size = getSize();
+            canvas.width = size.w;
+            canvas.height = size.h;
+
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${proto}//${location.host}/ws`);
+            ws.binaryType = 'arraybuffer';
+
+            let frameCount = 0;
+            let lastTime = performance.now();
+            let fpsDisplay = 0;
+
+            ws.onopen = () => {
+                fpsEl.textContent = 'connected';
+                ws.send(JSON.stringify({ type: 'resize', w: canvas.width, h: canvas.height }));
+            };
+
+            // handle resize / orientation change
+            window.addEventListener('resize', () => {
+                if (ws.readyState !== WebSocket.OPEN) return;
+                size = getSize();
+                canvas.width = size.w;
+                canvas.height = size.h;
+                ws.send(JSON.stringify({ type: 'resize', w: size.w, h: size.h }));
+            });
+
+            ws.onmessage = async (e) => {
+                const blob = new Blob([e.data], { type: 'image/jpeg' });
+                const bitmap = await createImageBitmap(blob);
+                ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                bitmap.close();
+
+                frameCount++;
+                const now = performance.now();
+                const elapsed = now - lastTime;
+                if (elapsed >= 1000) {
+                    fpsDisplay = Math.round((frameCount / elapsed) * 1000);
+                    frameCount = 0;
+                    lastTime = now;
+                    fpsEl.textContent = `${fpsDisplay} fps · server`;
+                }
+            };
+
+            ws.onclose = () => { fpsEl.textContent = 'disconnected'; };
+            ws.onerror = () => { fpsEl.textContent = 'error'; };
+
+            // input: click
+            canvas.addEventListener('click', (e) => {
+                if (ws.readyState !== WebSocket.OPEN) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width * canvas.width;
+                const y = (e.clientY - rect.top) / rect.height * canvas.height;
+                ws.send(JSON.stringify({ type: 'click', x, y }));
+            });
+
+            // input: touch
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (ws.readyState !== WebSocket.OPEN) return;
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = (touch.clientX - rect.left) / rect.width * canvas.width;
+                const y = (touch.clientY - rect.top) / rect.height * canvas.height;
+                ws.send(JSON.stringify({ type: 'click', x, y }));
+            }, { passive: false });
+        })();
+    </script>
+</body>
+
+</html>
