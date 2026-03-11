@@ -25,7 +25,7 @@ fn sw() -> usize { SCREEN_W.with(|c| c.get()) }
 fn sh() -> usize { SCREEN_H.with(|c| c.get()) }
 
 #[inline(always)]
-fn zm() -> f64 { ZOOM.with(|c| c.get()) }
+pub fn zm() -> f64 { ZOOM.with(|c| c.get()) }
 
 // --- optimized drawing primitives ---
 
@@ -347,7 +347,7 @@ fn glyph(c: char) -> [u8; 5] {
     }
 }
 
-fn draw_tiny_string(pixels: &mut [u8], x: i32, y: i32, text: &str, r: u8, g: u8, b: u8, alpha: u8) {
+pub fn draw_tiny_string(pixels: &mut [u8], x: i32, y: i32, text: &str, r: u8, g: u8, b: u8, alpha: u8) {
     let mut cx = x;
     for ch in text.chars() {
         let g_data = glyph(ch);
@@ -375,7 +375,7 @@ fn draw_hero_sprite(pixels: &mut [u8], sx: i32, sy: i32, facing: u32) {
 }
 
 /// zoomed hero sprite — used by in-game rendering
-fn draw_hero_sprite_z(pixels: &mut [u8], sx: i32, sy: i32, facing: u32, z: i32) {
+pub fn draw_hero_sprite_z(pixels: &mut [u8], sx: i32, sy: i32, facing: u32, z: i32) {
     // shadow
     zr(pixels, sx, sy, z, 2, 14, 12, 2, 15, 40, 15);
     // boots

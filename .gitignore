@@ -2,8 +2,8 @@
 /target/
 Cargo.lock
 
-# wasm build output
-/static/pkg/
+# environment variables
+.env
 
 # node (legacy)
 /node_modules/

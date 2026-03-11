@@ -1,8 +1,10 @@
+use serde::{Serialize, Deserialize};
+
 pub const TILE_SIZE: usize = 16;
 pub const MAP_W: usize = 200;
 pub const MAP_H: usize = 200;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum TileType {
     Grass,
     GrassDark,
@@ -29,13 +31,13 @@ impl TileType {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum ObjectKind {
     Tree,
     Rock,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WorldObject {
     pub kind: ObjectKind,
     pub tile_x: usize,
