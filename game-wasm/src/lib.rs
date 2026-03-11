@@ -74,7 +74,7 @@ impl PixelBuffer {
     }
 
     // Create a Join message manually from JS
-    pub fn create_join_msg(name: String) -> Vec<u8> {
-        bincode::serialize(&ClientMsg::Join { name }).unwrap_or_default()
+    pub fn create_join_msg(name: String, is_tutorial: bool) -> Vec<u8> {
+        bincode::serialize(&ClientMsg::Join { name, is_tutorial }).unwrap_or_default()
     }
 }

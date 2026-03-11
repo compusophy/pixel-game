@@ -13,12 +13,13 @@ export class PixelBuffer {
     }
     /**
      * @param {string} name
+     * @param {boolean} is_tutorial
      * @returns {Uint8Array}
      */
-    static create_join_msg(name) {
+    static create_join_msg(name, is_tutorial) {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.pixelbuffer_create_join_msg(ptr0, len0);
+        const ret = wasm.pixelbuffer_create_join_msg(ptr0, len0, is_tutorial);
         var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v2;

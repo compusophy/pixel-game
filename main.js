@@ -1,8 +1,51 @@
-import init, { PixelBuffer } from './pkg/pixel_buffer.js';
+// Connection logic
+let ws;
+const loginDiv = document.getElementById('login');
+const usernameInput = document.getElementById('username');
+const joinBtn = document.getElementById('join-btn');
+const tutorialBtn = document.getElementById('tutorial-btn');
+
+function attemptConnect(name, isTutorial) {
+    if (ws) return;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        const joinMsg = PixelBuffer.create_join_msg(name, isTutorial);
+        ws.send(joinMsg);
+        loginDiv.style.display = 'none';
+    };
+
+    ws.onmessage = async (event) => {
+        if (event.data instanceof Blob) {
+            const buf = await event.data.arrayBuffer();
+            buffer.receive_message(new Uint8Array(buf));
+        }
+    };
+
+    ws.onclose = () => {
+        console.log("Disconnected from server");
+        loginDiv.style.display = 'flex';
+        ws = null;
+    };
+}
+
+joinBtn.addEventListener('click', () => {
+    let name = usernameInput.value.trim();
+    if (!name) name = "Guest";
+    attemptConnect(name, false);
+});
+
+tutorialBtn.addEventListener('click', () => {
+    let name = usernameInput.value.trim();
+    if (!name) name = "Guest";
+    attemptConnect(name, true);
+});
 
 async function run() {
     const wasm = await init();
 
+    // Setup canvas
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const fpsEl = document.getElementById('fps');
@@ -12,7 +55,8 @@ async function run() {
     canvas.width = w;
     canvas.height = h;
 
-    const buffer = new PixelBuffer(w, h);
+    // This buffer is global for connection handlers
+    window.buffer = new PixelBuffer(w, h);
     let width = buffer.width();
     let height = buffer.height();
 
@@ -48,6 +92,16 @@ async function run() {
         const y = (touch.clientY - rect.top) * scaleY;
         buffer.on_click(x, y);
     }, { passive: false });
+
+    // handle polling messages
+    setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            let pending;
+            while ((pending = buffer.poll_message()) !== undefined) {
+                ws.send(pending);
+            }
+        }
+    }, 50);
 
     let lastTime = performance.now();
     let frameCount = 0;

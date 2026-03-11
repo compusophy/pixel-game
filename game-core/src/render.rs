@@ -151,15 +151,28 @@ fn zp(pixels: &mut [u8], bx: i32, by: i32, z: i32, ox: i32, oy: i32, r: u8, g: u
 }
 
 fn draw_tree(pixels: &mut [u8], x: i32, y: i32, z: i32) {
-    zr(pixels, x, y, z, 6, 8, 4, 8, 100, 70, 35);
-    zr(pixels, x, y, z, 2, 2, 12, 3, 20, 100, 25);
-    zr(pixels, x, y, z, 1, -2, 14, 5, 25, 115, 30);
-    zr(pixels, x, y, z, 3, -5, 10, 4, 30, 130, 35);
-    zr(pixels, x, y, z, 4, -3, 3, 2, 45, 150, 50);
-    zr(pixels, x, y, z, 8, 0, 2, 2, 40, 140, 45);
+    // Tree is 1x2 tiles (16 wide x 32 tall). Base is at 'y', so the top goes to 'y - 16'
+    // trunk
+    zr(pixels, x, y, z, 5, 8, 6, 8, 100, 70, 35); // base
+    zr(pixels, x, y, z, 6, -4, 4, 12, 100, 70, 35); // upper trunk
+    
+    // leaves (3 main tiers for a taller pine/spruce shape)
+    // bottom tier
+    zr(pixels, x, y, z, 1, 2, 14, 6, 20, 90, 25);
+    zr(pixels, x, y, z, 0, -2, 16, 5, 25, 105, 30);
+    // mid tier
+    zr(pixels, x, y, z, 1, -8, 14, 6, 30, 115, 35);
+    zr(pixels, x, y, z, 2, -12, 12, 5, 35, 125, 40);
+    // top tier
+    zr(pixels, x, y, z, 4, -16, 8, 5, 40, 135, 45);
+    zr(pixels, x, y, z, 6, -19, 4, 4, 45, 150, 50);
+    // highlights
+    zr(pixels, x, y, z, 8, -6, 3, 2, 45, 140, 45);
+    zr(pixels, x, y, z, 10, -10, 2, 2, 50, 160, 50);
 }
 
 fn draw_stump(pixels: &mut [u8], x: i32, y: i32, z: i32) {
+    // Stump remains 1x1 at the base.
     zr(pixels, x, y, z, 5, 10, 6, 4, 90, 60, 30);
     zr(pixels, x, y, z, 6, 9, 4, 2, 110, 75, 40);
     zp(pixels, x, y, z, 7, 10, 70, 50, 25);
@@ -262,6 +275,7 @@ pub fn render_target_marker(pixels: &mut [u8], hero: &Hero, cam: &Camera, time: 
         }
     }
 }
+
 
 // ---- floating text ----
 
@@ -607,9 +621,9 @@ pub fn render_inventory_panel(pixels: &mut [u8], inventory: &Inventory) {
 
     let panel_w: i32 = 90;
     let panel_h: i32 = 14 + item_lines as i32 * 8;
-    let btn_size: i32 = 24;
-    let px = sw - panel_w - btn_size - 16;
-    let py = sh - panel_h - 8;
+    // user wants it centered exactly like the minimap
+    let px = (sw - panel_w) / 2;
+    let py = (sh - panel_h) / 2;
 
     draw_panel_bg(pixels, px, py, panel_w, panel_h);
 
@@ -642,11 +656,9 @@ pub fn render_skills_panel(pixels: &mut [u8], wc: &WoodcuttingSkill) {
     let sh = sh() as i32;
     let panel_w: i32 = 120;
     let panel_h: i32 = 30;
-    let btn_size: i32 = 24;
-    let px = sw - panel_w - btn_size - 16;
-    let inv_btn_y = sh - btn_size - 8;
-    let skills_btn_y = inv_btn_y - btn_size - 4;
-    let py = skills_btn_y;
+    // center it
+    let px = (sw - panel_w) / 2;
+    let py = (sh - panel_h) / 2;
 
     draw_panel_bg(pixels, px, py, panel_w, panel_h);
 

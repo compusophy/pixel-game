@@ -66,16 +66,8 @@ fn hash_f(x: u32, y: u32, seed: u32) -> f64 {
 
 impl WorldMap {
     pub fn generate(seed: u32) -> Self {
+        // we just use Grass everywhere now per user request
         let mut tiles = vec![vec![TileType::Grass; MAP_W]; MAP_H];
-
-        // vary grass
-        for y in 0..MAP_H {
-            for x in 0..MAP_W {
-                if hash_f(x as u32, y as u32, seed + 1) < 0.35 {
-                    tiles[y][x] = TileType::GrassDark;
-                }
-            }
-        }
 
         // water lakes
         let lakes = [(15u32, 12u32, 5u32), (45, 40, 4), (10, 50, 3), (50, 15, 4)];
@@ -121,9 +113,10 @@ impl WorldMap {
 
         // place trees and rocks
         let mut objects = Vec::new();
-        for y in 1..MAP_H - 1 {
+        // start at y=2 to ensure 1x2 trees have room above them (y-1) without bounds issues at 0
+        for y in 2..MAP_H - 1 {
             for x in 1..MAP_W - 1 {
-                if matches!(tiles[y][x], TileType::Grass | TileType::GrassDark) {
+                if matches!(tiles[y][x], TileType::Grass) {
                     let r = hash_f(x as u32, y as u32, seed + 100);
                     if r < 0.08 {
                         objects.push(WorldObject { kind: ObjectKind::Tree, tile_x: x, tile_y: y, health: 3, alive: true });
@@ -152,6 +145,24 @@ impl WorldMap {
         WorldMap { tiles, objects }
     }
 
+    pub fn generate_tutorial() -> Self {
+        // A simple tiny isolated island for tutorial
+        let mut tiles = vec![vec![TileType::Water; MAP_W]; MAP_H];
+        
+        // Make a 20x20 grass island at (5, 5) -> (25, 25)
+        for y in 5..=25 {
+            for x in 5..=25 {
+                tiles[y][x] = TileType::Grass;
+            }
+        }
+
+        // Place exactly ONE tree for them to chop at (15, 10)
+        let mut objects = Vec::new();
+        objects.push(WorldObject { kind: ObjectKind::Tree, tile_x: 15, tile_y: 10, health: 3, alive: true });
+
+        WorldMap { tiles, objects }
+    }
+
     pub fn tile_at(&self, x: usize, y: usize) -> TileType {
         if x < MAP_W && y < MAP_H { self.tiles[y][x] } else { TileType::Water }
     }
@@ -160,11 +171,26 @@ impl WorldMap {
         if x >= MAP_W || y >= MAP_H { return false; }
         if !self.tiles[y][x].is_walkable() { return false; }
         // dead objects don't block
-        !self.objects.iter().any(|o| o.alive && o.tile_x == x && o.tile_y == y)
+        !self.objects.iter().any(|o| {
+            if !o.alive { return false; }
+            if o.kind == ObjectKind::Tree {
+                // Tree is 1x2: it blocks its base (tile_y) and the tile above it (tile_y - 1)
+                o.tile_x == x && (o.tile_y == y || (o.tile_y > 0 && o.tile_y - 1 == y))
+            } else {
+                o.tile_x == x && o.tile_y == y
+            }
+        })
     }
 
     pub fn object_index_at(&self, x: usize, y: usize) -> Option<usize> {
-        self.objects.iter().position(|o| o.alive && o.tile_x == x && o.tile_y == y)
+        self.objects.iter().position(|o| {
+            if !o.alive { return false; }
+            if o.kind == ObjectKind::Tree {
+                o.tile_x == x && (o.tile_y == y || (o.tile_y > 0 && o.tile_y - 1 == y))
+            } else {
+                o.tile_x == x && o.tile_y == y
+            }
+        })
     }
 
     /// find the best adjacent walkable tile to stand on when interacting with (tx, ty)

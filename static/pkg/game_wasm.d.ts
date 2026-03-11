@@ -4,7 +4,7 @@
 export class PixelBuffer {
     free(): void;
     [Symbol.dispose](): void;
-    static create_join_msg(name: string): Uint8Array;
+    static create_join_msg(name: string, is_tutorial: boolean): Uint8Array;
     height(): number;
     constructor(w: number, h: number);
     on_click(screen_x: number, screen_y: number): void;
@@ -34,7 +34,7 @@ export interface InitOutput {
     readonly pixelbuffer_on_scroll: (a: number, b: number, c: number, d: number) => void;
     readonly pixelbuffer_receive_message: (a: number, b: number, c: number) => void;
     readonly pixelbuffer_poll_message: (a: number) => [number, number];
-    readonly pixelbuffer_create_join_msg: (a: number, b: number) => [number, number];
+    readonly pixelbuffer_create_join_msg: (a: number, b: number, c: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -48,12 +48,19 @@ async fn main() {
         loop {
             interval.tick().await;
             let mut w = world.lock().await;
-            let msg = w.tick(50.0);
+            let (global_msg, individual_msgs) = w.tick(50.0);
             drop(w); // drop lock before broadcasting
 
-            // broadcast tick to all clients
+            // broadcast global tick to all clients
             let mut clients = txs.lock().await;
-            clients.retain(|_, tx| tx.send(msg.clone()).is_ok());
+            clients.retain(|_, tx| tx.send(global_msg.clone()).is_ok());
+
+            // send individual messages (like tutorial instructions)
+            for (pid, msg) in individual_msgs {
+                if let Some(tx) = clients.get(&pid) {
+                    let _ = tx.send(msg);
+                }
+            }
         }
     });
 
@@ -74,12 +81,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Binary(bin) = msg {
             if let Ok(client_msg) = bincode::deserialize::<ClientMsg>(&bin) {
-                if let ClientMsg::Join { name } = client_msg {
+                if let ClientMsg::Join { name, is_tutorial } = client_msg {
                     let mut world = state.world.lock().await;
-                    player_id = world.add_player(name);
+                    player_id = world.add_player(name, is_tutorial);
                     let welcome = ServerMsg::Welcome {
                         player_id,
                         map_seed: world.map_seed,
+                        is_tutorial,
                     };
                     let _ = tx.send(welcome);
                     state.txs.lock().await.insert(player_id, tx.clone());

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientMsg {
-    Join { name: String },
+    Join { name: String, is_tutorial: bool },
     Click { world_x: f64, world_y: f64 },
 }
 
@@ -30,6 +30,7 @@ pub enum ServerMsg {
     Welcome {
         player_id: u32,
         map_seed: u32,
+        is_tutorial: bool,
     },
     Tick {
         players: Vec<PlayerSnapshot>,

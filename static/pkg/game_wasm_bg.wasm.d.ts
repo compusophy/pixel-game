@@ -13,7 +13,7 @@ export const pixelbuffer_set_zoom: (a: number, b: number) => void;
 export const pixelbuffer_on_scroll: (a: number, b: number, c: number, d: number) => void;
 export const pixelbuffer_receive_message: (a: number, b: number, c: number) => void;
 export const pixelbuffer_poll_message: (a: number) => [number, number];
-export const pixelbuffer_create_join_msg: (a: number, b: number) => [number, number];
+export const pixelbuffer_create_join_msg: (a: number, b: number, c: number) => [number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

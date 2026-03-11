@@ -11,6 +11,33 @@ use item::*;
 use skills::*;
 use protocol::{ServerMsg, PlayerSnapshot, ObjectUpdate, ClientMsg};
 
+pub struct PlayerState {
+    pub current: PlayerSnapshot,
+    pub target_x: f64,
+    pub target_y: f64,
+}
+
+pub struct ClientState {
+    pixels: Vec<u8>,
+    width: usize,
+    height: usize,
+    
+    pub map: WorldMap,
+    pub camera: Camera,
+    pub zoom: f64,
+
+    pub my_player_id: u32,
+    pub players: std::collections::HashMap<u32, PlayerState>,
+    pub local_path: Vec<(usize, usize)>,
+    pub floating_texts: Vec<FloatingText>,
+    
+    // UI state
+    pub inventory: Inventory,
+    pub woodcutting: WoodcuttingSkill,
+    pub hud: HudState,
+    pub pending_messages: Vec<ClientMsg>,
+}
+
 pub struct HudState {
     pub inventory_open: bool,
     pub skills_open: bool,
@@ -33,25 +60,7 @@ impl HudState {
     }
 }
 
-pub struct ClientState {
-    pixels: Vec<u8>,
-    width: usize,
-    height: usize,
-    
-    pub map: WorldMap,
-    pub camera: Camera,
-    pub zoom: f64,
 
-    pub my_player_id: u32,
-    pub players: Vec<PlayerSnapshot>,
-    pub floating_texts: Vec<FloatingText>,
-    
-    // UI state
-    pub inventory: Inventory,
-    pub woodcutting: WoodcuttingSkill,
-    pub hud: HudState,
-    pub pending_messages: Vec<ClientMsg>,
-}
 
 impl ClientState {
     pub fn new(w: usize, h: usize) -> Self {
@@ -63,7 +72,8 @@ impl ClientState {
             camera: Camera::new(),
             zoom: 3.0,
             my_player_id: 0,
-            players: Vec::new(),
+            players: std::collections::HashMap::new(),
+            local_path: Vec::new(),
             floating_texts: Vec::new(),
             inventory: Inventory::new(),
             woodcutting: WoodcuttingSkill::new(),
@@ -74,13 +84,53 @@ impl ClientState {
 
     pub fn receive_server_msg(&mut self, msg: ServerMsg) {
         match msg {
-            ServerMsg::Welcome { player_id, map_seed } => {
+            ServerMsg::Welcome { player_id, map_seed, is_tutorial } => {
                 self.my_player_id = player_id;
-                self.map = WorldMap::generate(map_seed);
+                if is_tutorial {
+                    self.map = WorldMap::generate_tutorial();
+                } else {
+                    self.map = WorldMap::generate(map_seed);
+                }
             }
             ServerMsg::Tick { players, objects } => {
-                self.players = players;
-                // TODO: Update objects when we send dirty states
+                let mut new_ids = std::collections::HashSet::new();
+                for p in players {
+                    new_ids.insert(p.id);
+                    let id = p.id;
+                    if let Some(state) = self.players.get_mut(&id) {
+                        state.target_x = p.world_x;
+                        state.target_y = p.world_y;
+                        
+                        // If teleported
+                        let dx = state.target_x - state.current.world_x;
+                        let dy = state.target_y - state.current.world_y;
+                        if dx*dx + dy*dy > 400.0 {
+                            state.current.world_x = p.world_x;
+                            state.current.world_y = p.world_y;
+                        }
+                        
+                        state.current.is_moving = p.is_moving;
+                        state.current.facing = p.facing;
+                        state.current.anim_frame = p.anim_frame;
+                        state.current.health = p.health;
+                        state.current.max_health = p.max_health;
+                        state.current.name = p.name.clone();
+                    } else {
+                        self.players.insert(id, PlayerState {
+                            target_x: p.world_x,
+                            target_y: p.world_y,
+                            current: p,
+                        });
+                    }
+                }
+                self.players.retain(|k, _| new_ids.contains(k));
+
+                // Clear local path correctly when we stop
+                if let Some(me) = self.players.get(&self.my_player_id) {
+                    if !me.current.is_moving && !self.local_path.is_empty() {
+                        self.local_path.clear();
+                    }
+                }
             }
             ServerMsg::FloatingText { x, y, text, color } => {
                 self.floating_texts.push(FloatingText::new(x, y, Box::leak(text.into_boxed_str()), color));
@@ -132,10 +182,29 @@ impl ClientState {
             self.hud.map_cx = self.hud.map_cx.max(new_vis_w / 2.0).min(MAP_W as f64 - new_vis_w / 2.0);
             self.hud.map_cy = self.hud.map_cy.max(new_vis_h / 2.0).min(MAP_H as f64 - new_vis_h / 2.0);
         } else {
+            let z_before = self.zoom;
+            // Capture the world coordinate exactly under the cursor BEFORE zoom changes
+            let world_x_before = cursor_x / z_before + self.camera.x;
+            let world_y_before = cursor_y / z_before + self.camera.y;
+
             if delta < 0.0 {
                 self.set_zoom(self.zoom + 1.0);
             } else {
                 self.set_zoom(self.zoom - 1.0);
+            }
+            
+            if self.zoom != z_before {
+                // Adjust camera so the same world coordinate is still under the cursor AFTER zoom
+                let new_camera_x = world_x_before - (cursor_x / self.zoom);
+                let new_camera_y = world_y_before - (cursor_y / self.zoom);
+                
+                let vw = self.width as f64 / self.zoom;
+                let vh = self.height as f64 / self.zoom;
+                let mx = (MAP_W * TILE_SIZE) as f64 - vw;
+                let my = (MAP_H * TILE_SIZE) as f64 - vh;
+                
+                self.camera.x = new_camera_x.max(0.0).min(mx);
+                self.camera.y = new_camera_y.max(0.0).min(my);
             }
         }
     }
@@ -150,14 +219,31 @@ impl ClientState {
         set_screen_size(self.width, self.height);
         set_zoom(self.zoom);
 
+        // interpolate players
+        for state in self.players.values_mut() {
+            if state.current.world_x != state.target_x || state.current.world_y != state.target_y {
+                let dx = state.target_x - state.current.world_x;
+                let dy = state.target_y - state.current.world_y;
+                let step = 0.08 * dt; // Match server speed
+                let dist = (dx*dx + dy*dy).sqrt();
+                if dist <= step {
+                    state.current.world_x = state.target_x;
+                    state.current.world_y = state.target_y;
+                } else {
+                    state.current.world_x += (dx / dist) * step;
+                    state.current.world_y += (dy / dist) * step;
+                }
+            }
+        }
+
         // find my player and sync camera
-        if let Some(me) = self.players.iter().find(|p| p.id == self.my_player_id) {
+        if let Some(me) = self.players.get(&self.my_player_id) {
             let vw = self.width as f64 / self.zoom;
             let vh = self.height as f64 / self.zoom;
             // mock hero to pass to camera
             let mut pseudo_hero = Hero::new(0, 0);
-            pseudo_hero.world_x = me.world_x;
-            pseudo_hero.world_y = me.world_y;
+            pseudo_hero.world_x = me.current.world_x;
+            pseudo_hero.world_y = me.current.world_y;
             self.camera.follow(&pseudo_hero, vw, vh);
         }
 
@@ -169,14 +255,15 @@ impl ClientState {
         
         // render objects
         // We will just assume my_ty is the screen center or my player
-        let my_ty = if let Some(me) = self.players.iter().find(|p| p.id == self.my_player_id) {
-            (me.world_y / TILE_SIZE as f64) as usize
+        let my_ty = if let Some(me) = self.players.get(&self.my_player_id) {
+            (me.current.world_y / TILE_SIZE as f64) as usize
         } else { 0 };
 
         render_objects_layer(&mut self.pixels, &self.map, &self.camera, my_ty, true);
         
         // render all players
-        for p in &self.players {
+        for state in self.players.values() {
+            let p = &state.current;
             let z = zm();
             let zi = z.round() as i32;
             let cam_px = (self.camera.x * z).floor() as i32;
@@ -192,13 +279,24 @@ impl ClientState {
         }
 
         render_objects_layer(&mut self.pixels, &self.map, &self.camera, my_ty, false);
+
+        if !self.local_path.is_empty() {
+            if let Some(me) = self.players.get(&self.my_player_id) {
+                let mut pseudo_hero = Hero::new(0, 0);
+                pseudo_hero.world_x = me.current.world_x;
+                pseudo_hero.world_y = me.current.world_y;
+                pseudo_hero.path = self.local_path.clone(); // Pass clone for rendering
+                render_target_marker(&mut self.pixels, &pseudo_hero, &self.camera, dt);
+            }
+        }
+
         render_floating_texts(&mut self.pixels, &self.floating_texts, &self.camera);
 
         // UI rendering
-        if let Some(me) = self.players.iter().find(|p| p.id == self.my_player_id) {
+        if let Some(me) = self.players.get(&self.my_player_id) {
             let mut pseudo_hero = Hero::new(0, 0);
-            pseudo_hero.health = me.health as u32;
-            pseudo_hero.max_health = me.max_health as u32;
+            pseudo_hero.health = me.current.health as u32;
+            pseudo_hero.max_health = me.current.max_health as u32;
             render_portrait(&mut self.pixels, &pseudo_hero);
         }
         
@@ -210,10 +308,10 @@ impl ClientState {
             render_skills_panel(&mut self.pixels, &self.woodcutting);
         }
         if self.hud.map_open && !self.players.is_empty() {
-            if let Some(me) = self.players.iter().find(|p| p.id == self.my_player_id) {
+            if let Some(me) = self.players.get(&self.my_player_id) {
                 let mut pseudo_hero = Hero::new(0,0);
-                pseudo_hero.world_x = me.world_x;
-                pseudo_hero.world_y = me.world_y;
+                pseudo_hero.world_x = me.current.world_x;
+                pseudo_hero.world_y = me.current.world_y;
                 render_minimap(
                     &mut self.pixels, &self.map, &pseudo_hero, &self.camera,
                     self.hud.map_zoom, self.hud.map_cx, self.hud.map_cy,
@@ -264,5 +362,33 @@ impl ClientState {
         let world_x = screen_x / self.zoom + self.camera.x;
         let world_y = screen_y / self.zoom + self.camera.y;
         self.pending_messages.push(ClientMsg::Click { world_x, world_y });
+
+        // Calculate a local path instantly for the client-side visuals
+        if let Some(me) = self.players.get(&self.my_player_id) {
+            let hero_tx = (me.current.world_x / TILE_SIZE as f64) as usize;
+            let hero_ty = (me.current.world_y / TILE_SIZE as f64) as usize;
+            let cx = (world_x / TILE_SIZE as f64) as usize;
+            let cy = (world_y / TILE_SIZE as f64) as usize;
+            let tx = cx.min(MAP_W - 1);
+            let ty = cy.min(MAP_H - 1);
+
+            let mut goal = (tx, ty);
+            let mut need_path = true;
+
+            if !self.map.is_walkable(tx, ty) {
+                if let Some(adj) = self.map.adjacent_walkable_tile(tx, ty, hero_tx, hero_ty) {
+                    goal = adj;
+                } else {
+                    need_path = false;
+                }
+            }
+
+            if need_path {
+                let path = crate::pathfind::astar(&self.map, (hero_tx, hero_ty), goal);
+                if !path.is_empty() {
+                    self.local_path = path;
+                }
+            }
+        }
     }
 }
