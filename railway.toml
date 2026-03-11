@@ -1,6 +1,0 @@
-[build]
-builder = "NIXPACKS"
-buildCommand = "cargo build --release --package game-server"
-
-[deploy]
-startCommand = "cargo run --release --package game-server"
