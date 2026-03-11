@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="a fullscreen pixel game rendered with rust and webassembly">
-    <title>pixel buffer</title>
+    <title>pixel game</title>
     <style>
         * {
             margin: 0;
@@ -44,97 +44,10 @@
             pointer-events: none;
             z-index: 10;
         }
-
-        #login-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(10, 10, 15, 0.85);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 20;
-            backdrop-filter: blur(4px);
-        }
-
-        #login-overlay.hidden {
-            display: none;
-        }
-
-        #login-form {
-            background: #1a1a24;
-            padding: 2rem;
-            border-radius: 8px;
-            border: 1px solid #2a2a3a;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            min-width: 300px;
-        }
-
-        #login-form h1 {
-            color: #ccc;
-            font-size: 1.2rem;
-            font-weight: 500;
-            text-align: center;
-            margin-bottom: 0.5rem;
-        }
-
-        #username-input {
-            width: 100%;
-            padding: 0.8rem;
-            background: #0a0a0f;
-            border: 1px solid #3a3a4a;
-            color: white;
-            border-radius: 4px;
-            outline: none;
-            font-size: 1rem;
-        }
-
-        #username-input:focus {
-            border-color: #5a5a8a;
-        }
-
-        #join-btn {
-            width: 100%;
-            padding: 0.8rem;
-            background: #4a4a6a;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-
-        #join-btn:hover {
-            background: #5a5a8a;
-        }
-
-        #error-msg {
-            color: #ff5555;
-            font-size: 0.8rem;
-            text-align: center;
-            display: none;
-        }
     </style>
 </head>
 
 <body>
-    <div id="login-overlay">
-        <form id="login-form">
-            <h1>join the world</h1>
-            <input type="text" id="username-input" placeholder="enter character name..." maxlength="12"
-                autocomplete="off" required autofocus>
-            <p id="error-msg">name required</p>
-            <button type="submit" id="join-btn">join game</button>
-        </form>
-    </div>
-
     <canvas id="canvas"></canvas>
     <p class="fps" id="fps">loading wasm…</p>
 
@@ -146,10 +59,6 @@
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             const fpsEl = document.getElementById('fps');
-            const loginOverlay = document.getElementById('login-overlay');
-            const loginForm = document.getElementById('login-form');
-            const usernameInput = document.getElementById('username-input');
-            const errorMsg = document.getElementById('error-msg');
 
             let w = window.innerWidth;
             let h = window.innerHeight;
@@ -164,7 +73,7 @@
             let isConnected = false;
 
             // ---- WebSocket Setup ----
-            function connectWebSocket(username) {
+            function connectWebSocket(username, isTutorial) {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}/ws`;
 
@@ -172,17 +81,12 @@
                 ws.binaryType = "arraybuffer";
 
                 ws.onopen = () => {
-                    console.log("connected to server");
+                    console.log("connected to server", isTutorial ? "(tutorial)" : "");
                     isConnected = true;
-                    loginOverlay.classList.add('hidden');
 
                     // send Join message
-                    const joinMsg = PixelBuffer.create_join_msg(username);
+                    const joinMsg = PixelBuffer.create_join_msg(username, isTutorial);
                     ws.send(joinMsg);
-
-                    // start render loop
-                    lastTime = performance.now();
-                    requestAnimationFrame(frame);
                 };
 
                 ws.onmessage = (event) => {
@@ -193,32 +97,23 @@
                 ws.onclose = () => {
                     console.log("disconnected from server");
                     isConnected = false;
-                    loginOverlay.classList.remove('hidden');
-                    errorMsg.textContent = "disconnected from server.";
-                    errorMsg.style.display = "block";
+                    ws = null;
                 };
 
                 ws.onerror = (err) => {
                     console.error("websocket error", err);
-                    errorMsg.textContent = "connection failed.";
-                    errorMsg.style.display = "block";
+                    isConnected = false;
                 };
             }
 
-            // ---- Login form ----
-            loginForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const name = usernameInput.value.trim().toLowerCase();
-                if (name.length < 1) {
-                    errorMsg.style.display = "block";
-                    return;
-                }
-                errorMsg.style.display = "none";
-                joinBtn.disabled = true;
-                joinBtn.textContent = "connecting...";
-                connectWebSocket(name);
+            // ---- Input Bridge ----
+            window.addEventListener('keydown', (e) => {
+                buffer.on_key(e.key, true);
+                if (e.key === 'Backspace') e.preventDefault();
             });
-            const joinBtn = document.getElementById('join-btn');
+            window.addEventListener('keyup', (e) => {
+                buffer.on_key(e.key, false);
+            });
 
             // ---- resize ----
             window.addEventListener('resize', () => {
@@ -233,48 +128,23 @@
 
             // ---- scroll wheel zoom (desktop) ----
             canvas.addEventListener('wheel', (e) => {
-                if (!isConnected) return;
                 e.preventDefault();
                 buffer.on_scroll(e.deltaY, e.clientX, e.clientY);
             }, { passive: false });
 
-            // ---- pinch zoom (mobile) ----
-            let pinchStartDist = 0;
+            // ---- click (desktop) ----
+            canvas.addEventListener('mousedown', (e) => {
+                buffer.on_click(e.clientX, e.clientY);
+            });
 
+            // ---- touch help ----
             canvas.addEventListener('touchstart', (e) => {
-                if (!isConnected) return;
-                if (e.touches.length === 2) {
-                    const dx = e.touches[0].clientX - e.touches[1].clientX;
-                    const dy = e.touches[0].clientY - e.touches[1].clientY;
-                    pinchStartDist = Math.hypot(dx, dy);
-                    e.preventDefault();
-                } else if (e.touches.length === 1) {
-                    e.preventDefault();
+                if (e.touches.length === 1) {
                     const t = e.touches[0];
                     buffer.on_click(t.clientX, t.clientY);
                 }
+                e.preventDefault();
             }, { passive: false });
-
-            canvas.addEventListener('touchmove', (e) => {
-                if (!isConnected) return;
-                if (e.touches.length === 2) {
-                    e.preventDefault();
-                    const dx = e.touches[0].clientX - e.touches[1].clientX;
-                    const dy = e.touches[0].clientY - e.touches[1].clientY;
-                    const dist = Math.hypot(dx, dy);
-                    const mid_x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                    const mid_y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-                    const delta = dist > pinchStartDist ? -1 : 1;
-                    buffer.on_scroll(delta * 30, mid_x, mid_y);
-                    pinchStartDist = dist;
-                }
-            }, { passive: false });
-
-            // ---- click (desktop) ----
-            canvas.addEventListener('click', (e) => {
-                if (!isConnected) return;
-                buffer.on_click(e.clientX, e.clientY);
-            });
 
             // ---- render loop ----
             let lastTime = 0;
@@ -282,18 +152,24 @@
             let fpsDisplay = 0;
 
             function frame(time) {
-                if (!isConnected) return;
+                // Check for connection requests from WASM
+                const req = buffer.poll_connection_request();
+                if (req) {
+                    connectWebSocket(req.name, req.is_tutorial);
+                }
 
                 buffer.tick(time);
 
-                // send pending messages to server
-                while (true) {
-                    const msg = buffer.poll_message();
-                    if (!msg) break;
-                    try {
-                        ws.send(msg);
-                    } catch (e) {
-                        console.error("error sending message", e);
+                // send pending messages to server if connected
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    while (true) {
+                        const msg = buffer.poll_message();
+                        if (!msg) break;
+                        try {
+                            ws.send(msg);
+                        } catch (e) {
+                            console.error("error sending message", e);
+                        }
                     }
                 }
 
@@ -309,10 +185,11 @@
                     fpsDisplay = Math.round((frameCount / elapsed) * 1000);
                     frameCount = 0;
                     lastTime = time;
-                    fpsEl.textContent = `${fpsDisplay} fps · ${width}×${height} · wasm multi`;
+                    fpsEl.textContent = `${fpsDisplay} fps · ${width}×${height} · native wasm ui`;
                 }
                 requestAnimationFrame(frame);
             }
+            requestAnimationFrame(frame);
         }
         run();
     </script>

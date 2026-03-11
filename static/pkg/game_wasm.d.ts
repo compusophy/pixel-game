@@ -8,8 +8,10 @@ export class PixelBuffer {
     height(): number;
     constructor(w: number, h: number);
     on_click(screen_x: number, screen_y: number): void;
+    on_key(key: string, down: boolean): void;
     on_scroll(delta: number, cursor_x: number, cursor_y: number): void;
     pointer(): number;
+    poll_connection_request(): any;
     poll_message(): Uint8Array | undefined;
     receive_message(data: Uint8Array): void;
     resize(w: number, h: number): void;
@@ -32,12 +34,16 @@ export interface InitOutput {
     readonly pixelbuffer_on_click: (a: number, b: number, c: number) => void;
     readonly pixelbuffer_set_zoom: (a: number, b: number) => void;
     readonly pixelbuffer_on_scroll: (a: number, b: number, c: number, d: number) => void;
+    readonly pixelbuffer_on_key: (a: number, b: number, c: number, d: number) => void;
+    readonly pixelbuffer_poll_connection_request: (a: number) => any;
     readonly pixelbuffer_receive_message: (a: number, b: number, c: number) => void;
     readonly pixelbuffer_poll_message: (a: number) => [number, number];
     readonly pixelbuffer_create_join_msg: (a: number, b: number, c: number) => [number, number];
-    readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
+    readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }

@@ -48,6 +48,22 @@ impl PixelBuffer {
         self.inner.on_scroll(delta, cursor_x, cursor_y);
     }
 
+    pub fn on_key(&mut self, key: String, down: bool) {
+        self.inner.on_key(key, down);
+    }
+
+    pub fn poll_connection_request(&mut self) -> JsValue {
+        if let Some((name, is_tutorial)) = self.inner.connection_requested.take() {
+            // Return as a simple object { name, is_tutorial }
+            let obj = js_sys::Object::new();
+            js_sys::Reflect::set(&obj, &"name".into(), &name.into()).unwrap();
+            js_sys::Reflect::set(&obj, &"is_tutorial".into(), &is_tutorial.into()).unwrap();
+            obj.into()
+        } else {
+            JsValue::NULL
+        }
+    }
+
     // Process incoming binary message from server
     pub fn receive_message(&mut self, data: &[u8]) {
         if let Ok(msg) = bincode::deserialize::<ServerMsg>(data) {
@@ -60,7 +76,7 @@ impl PixelBuffer {
     // but for simplicity let's just return one at a time via a poll mechanism.
     pub fn poll_message(&mut self) -> Option<Vec<u8>> {
         let msgs = self.inner.drain_messages();
-        if let Some(msg) = msgs.first() {
+        if !msgs.is_empty() {
             // For now, if multiple queue up we drop some or we should queue them in the wrapper.
             // A better way: drain 1 at a time.
             let mut remaining = msgs;

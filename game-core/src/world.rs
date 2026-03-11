@@ -280,9 +280,9 @@ impl Hero {
         }
 
         self.anim_timer += dt;
-        if self.anim_timer > 200.0 {
+        if self.anim_timer > 150.0 {
             self.anim_timer = 0.0;
-            self.anim_frame = (self.anim_frame + 1) % 2;
+            self.anim_frame = (self.anim_frame + 1) % 4;
         }
     }
 }

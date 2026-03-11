@@ -9,7 +9,14 @@ use world::*;
 use render::*;
 use item::*;
 use skills::*;
-use protocol::{ServerMsg, PlayerSnapshot, ObjectUpdate, ClientMsg};
+use protocol::{ServerMsg, PlayerSnapshot, ClientMsg};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GameState {
+    Login,
+    Connecting,
+    Playing,
+}
 
 pub struct PlayerState {
     pub current: PlayerSnapshot,
@@ -36,6 +43,10 @@ pub struct ClientState {
     pub woodcutting: WoodcuttingSkill,
     pub hud: HudState,
     pub pending_messages: Vec<ClientMsg>,
+
+    pub state: GameState,
+    pub username_input: String,
+    pub connection_requested: Option<(String, bool)>, // (name, is_tutorial)
 }
 
 pub struct HudState {
@@ -79,6 +90,9 @@ impl ClientState {
             woodcutting: WoodcuttingSkill::new(),
             hud: HudState::new(),
             pending_messages: Vec::new(),
+            state: GameState::Login,
+            username_input: String::new(),
+            connection_requested: None,
         }
     }
 
@@ -91,8 +105,9 @@ impl ClientState {
                 } else {
                     self.map = WorldMap::generate(map_seed);
                 }
+                self.state = GameState::Playing;
             }
-            ServerMsg::Tick { players, objects } => {
+            ServerMsg::Tick { players, .. } => {
                 let mut new_ids = std::collections::HashSet::new();
                 for p in players {
                     new_ids.insert(p.id);
@@ -219,6 +234,12 @@ impl ClientState {
         set_screen_size(self.width, self.height);
         set_zoom(self.zoom);
 
+        if self.state == GameState::Login || self.state == GameState::Connecting {
+            clear(&mut self.pixels, 10, 10, 18);
+            render_login_screen(&mut self.pixels, &self.username_input, self.state == GameState::Connecting, dt);
+            return;
+        }
+
         // interpolate players
         for state in self.players.values_mut() {
             if state.current.world_x != state.target_x || state.current.world_y != state.target_y {
@@ -270,8 +291,8 @@ impl ClientState {
             let cam_py = (self.camera.y * z).floor() as i32;
             let sx = (p.world_x * z).floor() as i32 - cam_px;
             let sy = (p.world_y * z).floor() as i32 - cam_py;
-            let bob = if p.is_moving && p.anim_frame == 1 { -zi } else { 0 };
-            draw_hero_sprite_z(&mut self.pixels, sx, sy + bob, p.facing, zi);
+            
+            draw_hero_sprite_z(&mut self.pixels, sx, sy, p.facing, zi, p.anim_frame, p.is_moving);
 
             // name tag
             let nw = p.name.len() as i32 * 4;
@@ -321,6 +342,25 @@ impl ClientState {
     }
 
     pub fn on_click(&mut self, screen_x: f64, screen_y: f64) {
+        if self.state == GameState::Login {
+            let action = check_login_click(screen_x as i32, screen_y as i32, self.width as i32, self.height as i32);
+            match action {
+                LoginAction::Join => {
+                    if !self.username_input.is_empty() {
+                        self.connection_requested = Some((self.username_input.clone(), false));
+                        self.state = GameState::Connecting;
+                    }
+                }
+                LoginAction::Tutorial => {
+                    let name = if self.username_input.is_empty() { "learner".to_string() } else { self.username_input.clone() };
+                    self.connection_requested = Some((name, true));
+                    self.state = GameState::Connecting;
+                }
+                LoginAction::None => {}
+            }
+            return;
+        }
+
         let sx = screen_x as i32;
         let sy = screen_y as i32;
 
@@ -388,6 +428,25 @@ impl ClientState {
                 if !path.is_empty() {
                     self.local_path = path;
                 }
+            }
+        }
+    }
+
+    pub fn on_key(&mut self, key: String, down: bool) {
+        if !down { return; }
+        if self.state != GameState::Login { return; }
+
+        if key == "Backspace" {
+            self.username_input.pop();
+        } else if key == "Enter" {
+            if !self.username_input.is_empty() {
+                self.connection_requested = Some((self.username_input.clone(), false));
+                self.state = GameState::Connecting;
+            }
+        } else if key.len() == 1 {
+            let c = key.chars().next().unwrap();
+            if self.username_input.len() < 12 && (c.is_alphanumeric() || c == ' ') {
+                self.username_input.push(c.to_ascii_lowercase());
             }
         }
     }

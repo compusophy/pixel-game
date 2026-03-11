@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use game_core::world::{WorldMap, Hero};
-use game_core::protocol::{ServerMsg, PlayerSnapshot, ObjectUpdate, ClientMsg};
+use game_core::protocol::{ServerMsg, PlayerSnapshot, ClientMsg};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum TutorialState {
     None,
     Move,

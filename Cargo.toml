@@ -1,3 +1,7 @@
 [workspace]
 members = ["game-core", "game-server", "game-wasm"]
 resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true

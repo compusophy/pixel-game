@@ -223,7 +223,6 @@ pub fn render_objects_layer(
     }
 }
 
-
 pub fn render_chop_effect(pixels: &mut [u8], hero: &Hero, cam: &Camera, progress: f64) {
     let z = zm();
     let zi = z.round() as i32;
@@ -385,34 +384,57 @@ use crate::HudState;
 
 /// shared hero sprite drawing at 1x — used by portrait (UI element)
 fn draw_hero_sprite(pixels: &mut [u8], sx: i32, sy: i32, facing: u32) {
-    draw_hero_sprite_z(pixels, sx, sy, facing, 1);
+    draw_hero_sprite_z(pixels, sx, sy, facing, 1, 0, false);
 }
 
 /// zoomed hero sprite — used by in-game rendering
-pub fn draw_hero_sprite_z(pixels: &mut [u8], sx: i32, sy: i32, facing: u32, z: i32) {
+pub fn draw_hero_sprite_z(pixels: &mut [u8], sx: i32, sy: i32, facing: u32, z: i32, anim_frame: u32, is_moving: bool) {
+    let mut left_leg_y = 0;
+    let mut right_leg_y = 0;
+    let mut left_arm_y = 0;
+    let mut right_arm_y = 0;
+    let mut bob = 0;
+
+    if is_moving {
+        if anim_frame == 0 {
+            left_leg_y = -1;
+            left_arm_y = -1;
+            right_arm_y = 1;
+            bob = -1;
+        } else if anim_frame == 2 {
+            right_leg_y = -1;
+            left_arm_y = 1;
+            right_arm_y = -1;
+            bob = -1;
+        }
+    }
+
     // shadow
     zr(pixels, sx, sy, z, 2, 14, 12, 2, 15, 40, 15);
+    
+    let base_y = sy + bob * z;
+
     // boots
-    zr(pixels, sx, sy, z, 4, 12, 3, 3, 60, 40, 25);
-    zr(pixels, sx, sy, z, 9, 12, 3, 3, 60, 40, 25);
+    zr(pixels, sx, base_y, z, 4, 12 + left_leg_y, 3, 3, 60, 40, 25);
+    zr(pixels, sx, base_y, z, 9, 12 + right_leg_y, 3, 3, 60, 40, 25);
     // legs
-    zr(pixels, sx, sy, z, 4, 10, 3, 3, 80, 65, 45);
-    zr(pixels, sx, sy, z, 9, 10, 3, 3, 80, 65, 45);
+    zr(pixels, sx, base_y, z, 4, 10 + left_leg_y, 3, 3, 80, 65, 45);
+    zr(pixels, sx, base_y, z, 9, 10 + right_leg_y, 3, 3, 80, 65, 45);
     // body
-    zr(pixels, sx, sy, z, 3, 5, 10, 6, 50, 100, 170);
+    zr(pixels, sx, base_y, z, 3, 5, 10, 6, 50, 100, 170);
     // belt
-    zr(pixels, sx, sy, z, 3, 9, 10, 1, 100, 70, 30);
+    zr(pixels, sx, base_y, z, 3, 9, 10, 1, 100, 70, 30);
     // arms
-    zr(pixels, sx, sy, z, 1, 5, 2, 5, 220, 180, 140);
-    zr(pixels, sx, sy, z, 13, 5, 2, 5, 220, 180, 140);
+    zr(pixels, sx, base_y, z, 1, 5 + left_arm_y, 2, 5, 220, 180, 140);
+    zr(pixels, sx, base_y, z, 13, 5 + right_arm_y, 2, 5, 220, 180, 140);
     // head
-    zr(pixels, sx, sy, z, 4, 1, 8, 5, 220, 180, 140);
+    zr(pixels, sx, base_y, z, 4, 1, 8, 5, 220, 180, 140);
     // hair
-    zr(pixels, sx, sy, z, 3, 0, 10, 2, 80, 50, 20);
+    zr(pixels, sx, base_y, z, 3, 0, 10, 2, 80, 50, 20);
     // eyes
     if facing != 1 {
-        zp(pixels, sx, sy, z, 6, 3, 30, 30, 40);
-        zp(pixels, sx, sy, z, 9, 3, 30, 30, 40);
+        zp(pixels, sx, base_y, z, 6, 3, 30, 30, 40);
+        zp(pixels, sx, base_y, z, 9, 3, 30, 30, 40);
     }
 }
 
@@ -423,8 +445,10 @@ pub fn render_hero(pixels: &mut [u8], hero: &Hero, cam: &Camera) {
     let cam_py = (cam.y * z).floor() as i32;
     let sx = (hero.world_x * z).floor() as i32 - cam_px;
     let sy = (hero.world_y * z).floor() as i32 - cam_py;
-    let bob = if !hero.path.is_empty() && hero.anim_frame == 1 { -zi } else { 0 };
-    draw_hero_sprite_z(pixels, sx, sy + bob, hero.facing, zi);
+    
+    // Check if moving to apply animation offsets
+    let is_moving = !hero.path.is_empty();
+    draw_hero_sprite_z(pixels, sx, sy, hero.facing, zi, hero.anim_frame, is_moving);
 }
 
 pub fn render_portrait(pixels: &mut [u8], hero: &Hero) {
@@ -773,3 +797,99 @@ pub fn render_minimap(
         set_pixel(pixels, vx + vw, vy + i, 200, 200, 220);
     }
 }
+
+pub enum LoginAction {
+    None,
+    Join,
+    Tutorial,
+}
+
+pub fn check_login_click(sx: i32, sy: i32, sw: i32, sh: i32) -> LoginAction {
+    let box_y = sh / 2;
+    
+    // Join button
+    let btn_w = 180;
+    let btn_h = 24;
+    let join_x = (sw - btn_w) / 2;
+    let join_y = box_y + 20;
+    if sx >= join_x && sx < join_x + btn_w && sy >= join_y && sy < join_y + btn_h {
+        return LoginAction::Join;
+    }
+    
+    // Tutorial button
+    let tut_y = join_y + btn_h + 8;
+    if sx >= join_x && sx < join_x + btn_w && sy >= tut_y && sy < tut_y + btn_h {
+        return LoginAction::Tutorial;
+    }
+    
+    LoginAction::None
+}
+
+pub fn render_login_screen(pixels: &mut [u8], username: &str, connecting: bool, time: f64) {
+    let sw = sw() as i32;
+    let sh = sh() as i32;
+    
+    // Title
+    let title = "pixel game";
+    let title_w = title.len() as i32 * 4;
+    draw_tiny_string(pixels, (sw - title_w) / 2, sh / 2 - 60, title, 255, 255, 255, 255);
+    
+    let box_w = 200;
+    let box_h = 100;
+    let box_x = (sw - box_w) / 2;
+    let box_y = sh / 2 - 20;
+    
+    draw_panel_bg(pixels, box_x, box_y, box_w, box_h);
+    
+    // Input label
+    draw_tiny_string(pixels, box_x + 10, box_y + 10, "character name:", 160, 160, 180, 255);
+    
+    // Input box
+    let input_w = 180;
+    let input_h = 14;
+    let input_x = box_x + 10;
+    let input_y = box_y + 20;
+    fill_rect(pixels, input_x, input_y, input_w, input_h, 5, 5, 10);
+    for i in 0..input_w {
+        set_pixel(pixels, input_x + i, input_y, 40, 40, 60);
+        set_pixel(pixels, input_x + i, input_y + input_h - 1, 40, 40, 60);
+    }
+    for i in 0..input_h {
+        set_pixel(pixels, input_x, input_y + i, 40, 40, 60);
+        set_pixel(pixels, input_x + input_w - 1, input_y + i, 40, 40, 60);
+    }
+    
+    // Cursor/Text
+    let mut display_text = username.to_string();
+    if (time as u64 / 500) % 2 == 0 {
+        display_text.push('|');
+    }
+    draw_tiny_string(pixels, input_x + 4, input_y + 4, &display_text, 255, 255, 255, 255);
+    
+    // Buttons
+    let btn_w = 180;
+    let btn_h = 24;
+    let btn_x = (sw - btn_w) / 2;
+    let join_y = input_y + 20;
+    
+    if connecting {
+        draw_button_frame(pixels, btn_x, join_y, btn_w, false);
+        let msg = "connecting...";
+        let msg_w = msg.len() as i32 * 4;
+        draw_tiny_string(pixels, (sw - msg_w) / 2, join_y + 8, msg, 150, 150, 150, 255);
+    } else {
+        // Join button
+        draw_button_frame(pixels, btn_x, join_y, btn_w, false);
+        let join_txt = "join game";
+        let join_txt_w = join_txt.len() as i32 * 4;
+        draw_tiny_string(pixels, (sw - join_txt_w) / 2, join_y + 8, join_txt, 255, 255, 255, 255);
+        
+        // Tutorial button
+        let tut_y = join_y + btn_h + 8;
+        draw_button_frame(pixels, btn_x, tut_y, btn_w, false);
+        let tut_txt = "play tutorial";
+        let tut_txt_w = tut_txt.len() as i32 * 4;
+        draw_tiny_string(pixels, (sw - tut_txt_w) / 2, tut_y + 8, tut_txt, 150, 220, 180, 255);
+    }
+}
+
